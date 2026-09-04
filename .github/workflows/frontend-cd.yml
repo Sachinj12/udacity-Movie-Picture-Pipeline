@@ -1,0 +1,143 @@
+name: Frontend Continuous Deployment
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "starter/frontend/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend-lint:
+    name: Frontend Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: npm
+          cache-dependency-path: starter/frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: starter/frontend
+        run: npm ci
+
+      - name: Lint
+        working-directory: starter/frontend
+        run: npm run lint
+
+  frontend-test:
+    name: Frontend Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: npm
+          cache-dependency-path: starter/frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: starter/frontend
+        run: npm ci
+
+      - name: Test
+        working-directory: starter/frontend
+        run: npm test -- --watchAll=false
+        env:
+          CI: true
+
+  frontend-build:
+    name: Frontend Build
+    needs:
+      - frontend-lint
+      - frontend-test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Get frontend ECR repository
+        id: repository
+        run: |
+          REPOSITORY_URI=$(aws ecr describe-repositories \
+            --repository-names frontend \
+            --query 'repositories[0].repositoryUri' \
+            --output text)
+          echo "repository_uri=$REPOSITORY_URI" >> "$GITHUB_OUTPUT"
+
+      - name: Build frontend Docker image
+        working-directory: starter/frontend
+        run: |
+          docker build \
+            --build-arg=REACT_APP_MOVIE_API_URL=http://69ad5af1594234591a59d0870c50be09-1224410599.us-east-1.elb.amazonaws.com \
+            --tag=${{ steps.repository.outputs.repository_uri }}:${{ github.sha }} \
+            .
+
+      - name: Push frontend Docker image
+        run: |
+          docker push ${{ steps.repository.outputs.repository_uri }}:${{ github.sha }}
+
+  frontend-deploy:
+    name: Frontend Deploy
+    needs: frontend-build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig \
+            --name cluster \
+            --region "${{ secrets.AWS_REGION }}"
+
+      - name: Get frontend ECR repository
+        id: repository
+        run: |
+          REPOSITORY_URI=$(aws ecr describe-repositories \
+            --repository-names frontend \
+            --query 'repositories[0].repositoryUri' \
+            --output text)
+          echo "repository_uri=$REPOSITORY_URI" >> "$GITHUB_OUTPUT"
+
+      - name: Update frontend image
+        working-directory: starter/frontend/k8s
+        run: |
+          kustomize edit set image frontend=${{ steps.repository.outputs.repository_uri }}:${{ github.sha }}
+
+      - name: Deploy frontend
+        working-directory: starter/frontend/k8s
+        run: |
+          kustomize build | kubectl apply -f -
+
+      - name: Wait for frontend rollout
+        run: |
+          kubectl rollout status deployment/frontend --timeout=180s
