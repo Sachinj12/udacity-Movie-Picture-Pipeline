@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "starter/frontend/**"
+
   workflow_dispatch:
 
 permissions:
@@ -16,6 +17,10 @@ jobs:
     name: Frontend Lint
     runs-on: ubuntu-latest
 
+    defaults:
+      run:
+        working-directory: starter/frontend
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -28,17 +33,19 @@ jobs:
           cache-dependency-path: starter/frontend/package-lock.json
 
       - name: Install dependencies
-        working-directory: starter/frontend
         run: npm ci
 
       - name: Run lint
-        working-directory: starter/frontend
         run: npm run lint
 
   frontend-test:
     name: Frontend Test
     runs-on: ubuntu-latest
 
+    defaults:
+      run:
+        working-directory: starter/frontend
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -51,11 +58,9 @@ jobs:
           cache-dependency-path: starter/frontend/package-lock.json
 
       - name: Install dependencies
-        working-directory: starter/frontend
         run: npm ci
 
       - name: Run tests
-        working-directory: starter/frontend
         run: npm test -- --watchAll=false
         env:
           CI: true
@@ -76,6 +81,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Login to Amazon ECR
@@ -88,6 +94,7 @@ jobs:
             --repository-names frontend \
             --query 'repositories[0].repositoryUri' \
             --output text)
+
           echo "repository_uri=$REPOSITORY_URI" >> "$GITHUB_OUTPUT"
 
       - name: Build frontend Docker image
@@ -96,9 +103,9 @@ jobs:
           REACT_APP_MOVIE_API_URL: http://a7591686aad6e413895530d1e162e36a-2118330415.us-east-1.elb.amazonaws.com
         run: |
           docker build \
-       --build-arg REACT_APP_MOVIE_API_URL=$REACT_APP_MOVIE_API_URL \
-       --tag=${{ steps.repository.outputs.repository_uri }}:${{ github.sha }} \
-       .
+            --build-arg REACT_APP_MOVIE_API_URL="$REACT_APP_MOVIE_API_URL" \
+            --tag=${{ steps.repository.outputs.repository_uri }}:${{ github.sha }} \
+            .
 
       - name: Push frontend Docker image
         run: |
@@ -118,6 +125,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Configure kubectl
@@ -133,6 +141,7 @@ jobs:
             --repository-names frontend \
             --query 'repositories[0].repositoryUri' \
             --output text)
+
           echo "repository_uri=$REPOSITORY_URI" >> "$GITHUB_OUTPUT"
 
       - name: Update frontend image
