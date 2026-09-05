@@ -17,9 +17,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: "18"
           cache: npm
@@ -29,7 +31,7 @@ jobs:
         working-directory: starter/frontend
         run: npm ci
 
-      - name: Lint
+      - name: Run lint
         working-directory: starter/frontend
         run: npm run lint
 
@@ -38,9 +40,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: "18"
           cache: npm
@@ -50,7 +54,7 @@ jobs:
         working-directory: starter/frontend
         run: npm ci
 
-      - name: Test
+      - name: Run tests
         working-directory: starter/frontend
         run: npm test -- --watchAll=false
         env:
@@ -64,7 +68,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -74,7 +79,6 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Login to Amazon ECR
-        id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Get frontend ECR repository
@@ -104,7 +108,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -141,3 +146,8 @@ jobs:
       - name: Wait for frontend rollout
         run: |
           kubectl rollout status deployment/frontend --timeout=180s
+
+      - name: Verify frontend deployment
+        run: |
+          kubectl get all
+          kubectl describe deployment/frontend
